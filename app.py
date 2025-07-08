@@ -5,6 +5,10 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "logs"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ Log Receiver is running!"
+
 @app.route("/api/receive", methods=["POST"])
 def receive():
     for fname in request.files:

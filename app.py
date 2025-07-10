@@ -40,7 +40,7 @@ HTML_TEMPLATE = '''
       <button type="submit">Login</button>
     </form>
   {% else %}
-    <h2>Log Viewer (Live Feed)</h2>
+    <center><h2>Log Viewer (Live Feed)</h2></center>
     <table>
       <tr>
         {% for col in columns %}
@@ -52,7 +52,7 @@ HTML_TEMPLATE = '''
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
           {% for file in folder.files %}
-            <td>{% if file %}<a href="{{ file }}">📥 Download{% else %}-{% endif %}</td>
+            <td>{% if file %}<a href="{{ file }}">📥 View/Download</a>{% else %}-{% endif %}</td>
           {% endfor %}
         </tr>
       {% endfor %}
@@ -86,12 +86,17 @@ def index():
                     formatted_timestamp = folder
 
                 row = {"hostname": "", "timestamp": formatted_timestamp, "files": []}
+
                 for col in COLUMNS[2:]:
-                    match_file = next((f for f in os.listdir(full_path) if col.lower().replace(" ", "_") in f.lower()), None)
-                    if match_file:
-                        file_path = os.path.join(full_path, match_file)
-                        row["files"].append(f"/download/{folder}/{match_file}")
-                    else:
+                    matched = False
+                    for f in os.listdir(full_path):
+                        normalized = col.lower().replace(" ", "_")
+                        if normalized in f.lower():
+                            file_path = os.path.join(full_path, f)
+                            row["files"].append(f"/download/{folder}/{f}")
+                            matched = True
+                            break
+                    if not matched:
                         row["files"].append(None)
 
                 # Extract hostname from activity_log.txt

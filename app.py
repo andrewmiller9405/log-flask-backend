@@ -2,6 +2,7 @@ import os
 from flask import Flask, request, send_from_directory, render_template_string
 from werkzeug.utils import secure_filename
 from datetime import datetime
+import pytz
 
 UPLOAD_ROOT = "logs"
 PASSWORD = "disha456"
@@ -75,7 +76,16 @@ def index():
         for folder in sorted(os.listdir(UPLOAD_ROOT), reverse=True):
             full_path = os.path.join(UPLOAD_ROOT, folder)
             if os.path.isdir(full_path):
-                row = {"hostname": "", "timestamp": folder, "files": []}
+                # Convert folder name timestamp to IST format
+                try:
+                    dt = datetime.strptime(folder, "%Y-%m-%d_%H-%M-%S")
+                    ist = pytz.timezone('Asia/Kolkata')
+                    ist_dt = dt.replace(tzinfo=pytz.utc).astimezone(ist)
+                    formatted_timestamp = ist_dt.strftime("%H:%M:%S__%d:%m:%Y")
+                except:
+                    formatted_timestamp = folder
+
+                row = {"hostname": "", "timestamp": formatted_timestamp, "files": []}
                 for col in COLUMNS[2:]:
                     match_file = next((f for f in os.listdir(full_path) if col.lower().replace(" ", "_") in f.lower()), None)
                     if match_file:

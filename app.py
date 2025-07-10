@@ -79,9 +79,9 @@ def index():
                 # Convert folder name timestamp to IST format
                 try:
                     dt = datetime.strptime(folder, "%Y-%m-%d_%H-%M-%S")
-                    ist = pytz.timezone('Asia/Kolkata')
-                    ist_dt = dt.replace(tzinfo=pytz.utc).astimezone(ist)
-                    formatted_timestamp = ist_dt.strftime("%H:%M:%S__%d:%m:%Y")
+                    utc = pytz.utc.localize(dt)
+                    ist = utc.astimezone(pytz.timezone('Asia/Kolkata'))
+                    formatted_timestamp = ist.strftime("%H:%M:%S__%d:%m:%Y")
                 except:
                     formatted_timestamp = folder
 
@@ -114,7 +114,7 @@ def index():
 
 @app.route("/api/receive", methods=["POST"])
 def receive():
-    folder_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    folder_name = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
     save_dir = os.path.join(UPLOAD_ROOT, folder_name)
     os.makedirs(save_dir, exist_ok=True)
     for f in request.files.values():

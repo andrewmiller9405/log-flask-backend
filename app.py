@@ -33,13 +33,13 @@ HTML_TEMPLATE = '''
 </head>
 <body>
   {% if not authed %}
-    <h2>🔐 Enter Password to Access Logs</h2>
+    <h2>Enter Password to Access Logs</h2>
     <form method="POST">
       <input type="password" name="password" placeholder="Enter password"/>
       <button type="submit">Login</button>
     </form>
   {% else %}
-    <h2>📂 Log Viewer (Live Feed)</h2>
+    <h2>Log Viewer (Live Feed)</h2>
     <table>
       <tr>
         {% for col in columns %}
@@ -79,13 +79,23 @@ def index():
                 for col in COLUMNS[2:]:
                     match_file = next((f for f in os.listdir(full_path) if col.lower().replace(" ", "_") in f.lower()), None)
                     if match_file:
-                        if "host" in match_file.lower():
-                            with open(os.path.join(full_path, match_file), "r", encoding="utf-8") as f:
-                                row["hostname"] = f.read().strip().split("\n")[0]
-                        else:
-                            row["files"].append(f"/download/{folder}/{match_file}")
+                        file_path = os.path.join(full_path, match_file)
+                        row["files"].append(f"/download/{folder}/{match_file}")
                     else:
                         row["files"].append(None)
+
+                # Extract hostname from activity_log.txt
+                activity_log_file = next((f for f in os.listdir(full_path) if "activity_log" in f.lower()), None)
+                if activity_log_file:
+                    try:
+                        with open(os.path.join(full_path, activity_log_file), "r", encoding="utf-8") as f:
+                            for line in f:
+                                if "Computer Name:" in line:
+                                    row["hostname"] = line.split(":", 1)[1].strip()
+                                    break
+                    except:
+                        row["hostname"] = "Unknown"
+
                 if not row["hostname"]:
                     row["hostname"] = folder.split("_")[0]
                 log_entries.append(row)

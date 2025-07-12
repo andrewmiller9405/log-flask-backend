@@ -7,7 +7,7 @@ import pytz
 UPLOAD_ROOT = "logs"
 PASSWORD = "disha456"
 
-app = Flask(__name__)
+app = Flask(__name__) 
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
 
 COLUMNS = [

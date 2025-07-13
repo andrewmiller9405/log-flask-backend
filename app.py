@@ -4,7 +4,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime
 import pytz
 
-UPLOAD_ROOT = "logs"
+UPLOAD_ROOT = "logs" 
 PASSWORD = "disha456"
 
 app = Flask(__name__)
